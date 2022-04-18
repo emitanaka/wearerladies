@@ -1,0 +1,290 @@
+---
+output: github_document
+always_allow_html: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(cache = TRUE,
+                      cache.path = "cache/day1/",
+                      message = FALSE,
+                      warning = FALSE,
+                      fig.path = "figures/day1/")
+```
+
+
+# Learn with me about *spatial data*
+
+<blockquote>
+Hi everyone!
+
+Day 1️⃣ Spatial data     
+
+Today I'm going to dig into some spatial data 🗺️ featuring the following packages:
+
+📦 maps & mapproj @AlexDeckmyn & co
+📦 ggplot2 @hadleywickham/@thomasp85  & co 
+📦 sf @edzerpebesma
+📦🔧🇦🇺 strayr @wfmackey & co
+
+#rstats #rladies #rspatial
+
+
+</blockquote>
+
+```{r map-animate, fig.width = 16, fig.height = 9}
+library(gganimate)
+library(tidyverse)
+map_data("world2") %>% 
+  mutate(aust = region=="Australia") %>% 
+  ggplot(aes(long, lat, group = group, fill = aust)) +
+  geom_polygon() +
+  guides(fill = "none")  +
+  theme_void() + 
+  scale_fill_manual(values = c("#00843D", "#FFCD00")) + 
+  transition_states(aust, transition_length = 2, state_length = 1) +
+  shadow_mark(past = TRUE, future = TRUE, colour = 'grey') +
+  view_zoom_manual(pause_length = 1, 
+                   step_length = 2, 
+                   pan_zoom = 3,
+                   xmin = c(97, 0), xmax = c(175, 360),
+                   ymin = c(-54, -90), ymax = c(-10, 84))
+```
+
+<blockquote>
+
+Day 1️⃣ #1
+
+If you deal with spatial data, you likely need to augment it with a map data to analyse your data with a geographical context. 
+
+Map data is often auxiliary & you often wanna quickly get it. 
+
+📦 {maps} by 
+@AlexDeckmyn
+ & co ports the data from https://naturalearthdata.com
+
+</blockquote>
+
+
+```{r map-world1}
+maps::map("world", region = ".",  fill = TRUE, col = "#88398a")
+```
+
+```{r}
+str(maps::map("world", region = ".", plot = FALSE))
+```
+
+
+<blockquote>
+
+Day 1️⃣ #2
+
+If you want to have the map data in a tidy form, particularly ready for plotting, there's a handy function in {ggplot2} that calls {maps} under the hood.
+
+ggplot2::map_data("world")
+
+#rstats #rspatial #rladies
+
+</blockquote>
+
+
+```{r}
+str(ggplot2::map_data("world"))
+```
+
+
+<blockquote>
+
+Day 1️⃣ #3
+
+If you want to create a choropleth map then you'd usually need to merge your map data with your data. The most difficult part might be matching the region names when merging the two datasets!
+
+#rstats #rspatial #rladies
+
+</blockquote>
+
+
+```{r map-usarrests}
+library(tidyverse) # includes ggplot2
+
+usmap <- map_data("state") 
+
+data <- USArrests %>% 
+  rownames_to_column("state") %>% 
+  mutate(state = tolower(state)) %>% 
+  left_join(usmap, by = c("state" = "region"))
+
+ggplot(data, aes(long, lat, group = group, fill = UrbanPop)) +
+  geom_polygon(color = "black") +
+  theme_void() +
+  scale_fill_viridis_c() +
+  labs(title = "Percentage of urban population by state in US in 1973", 
+       fill = "Percentage")
+```
+
+<blockquote>
+
+Day 1️⃣ #4
+
+There's a quick easy way to visualise map data in {ggplot2} and that's using the ggplot2::borders() function. 
+
+Here's an example of a (sort-of) Dorling cartogram for the urban population in USA 🌎
+
+#rstats #rspatial #rladies
+
+</blockquote>
+
+```{r}
+library(tidyverse)
+
+data <- USArrests %>% 
+  rownames_to_column("state") %>% 
+  left_join(usa::states, by = c("state" = "name"))
+
+str(data)
+```
+
+```{r map-borders}
+ggplot(data, aes(long, lat)) + 
+  borders("state") +
+  geom_point(aes(size = UrbanPop),
+             alpha = 0.5)  +
+  theme_void() +
+  scale_color_viridis_c() +
+  labs(title = "Percentage of urban population by state in US in 1973", 
+       size = "Percentage")
+```
+
+
+
+<blockquote>
+
+Day 1️⃣ #5
+
+🌍 Geographic coordinate reference system (CRS) identify a location on the Earth's surface by longitude and latitude.
+
+🌐 Projected CRS are result of map projections of geographic CRS onto Cartesian coordinate on a flat surface
+
+This simply means that Earth is a sphere but there's many 2D views of it. Compare Antarctica in the images and also where the red dot is!
+
+
+#rstats #rspatial #rladies
+
+</blockquote>
+
+```{r world-maps, fig.height = 3.5}
+library(sf)
+library(maps)
+library(tidyverse)
+world1 <- st_as_sf(map('world', plot = FALSE, fill = TRUE))
+world2 <- st_transform(
+  world1,
+  "+proj=laea +y_0=0 +lon_0=155 +lat_0=-90 +ellps=WGS84 +no_defs"
+)
+pt <- data.frame(x = 0, y = 0) %>% 
+  st_as_sf(coords = 1:2, crs = st_crs(world1)) %>% 
+  st_transform(st_crs(world2))
+
+ggplot() + 
+  geom_sf(data = world2)  +
+  geom_sf(data = pt, color = "red", size = 3)
+
+ggplot() + 
+  geom_sf(data = world1) +
+  annotate("point", x = 0, y = 0, color = "red",
+           size = 3)
+```
+
+
+<blockquote>
+
+Day 1️⃣ #6
+
+🌑 mapproj::mapproject and sf::st_transform provides ways to convert lat and lon to projected coordinates -- the former uses a C library by Lucent Technologies Inc while the latter uses proj4string (https://proj.org/) to do the projection under the hood.
+
+
+#rstats #rspatial #rladies
+
+</blockquote>
+
+```{r map-flat}
+library(ggplot2)
+
+ggplot() + 
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, 
+           fill = "skyblue", color = "black") +
+  borders("world2", fill = "#88398a", colour = "black") +
+  theme_void() 
+```
+
+
+```{r map-flat-round}
+library(patchwork)
+library(ggplot2)
+g1 <- ggplot() + 
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, 
+           fill = "skyblue", color = "black") +
+  borders("world2", fill = "#88398a", colour = "black") +
+  theme_void() 
+
+g2 <- g1 + coord_map("gilbert")
+
+g1 + g2
+```
+
+
+```{r map-st-tranform}
+library(patchwork)
+library(ggplot2)
+library(sf)
+
+world <- st_as_sf(maps::map("world", plot = FALSE, fill = TRUE))
+
+g1 <- ggplot(world) + 
+  geom_sf() + 
+  theme_void() 
+
+worldt <- st_transform(
+  world,
+  "+proj=laea +y_0=0 +lon_0=155 +lat_0=-90 +ellps=WGS84 +no_defs"
+)
+
+g2 <- ggplot(worldt) + 
+  geom_sf() + 
+  theme_void() 
+
+g1 + g2
+```
+
+
+<blockquote>
+
+Day 1️⃣ #7
+
+🇦🇺 Now for the Aussies and those interested out there!
+
+📦 {strayr} by @wfmackey & co is a dev package that includes ABS mapping structures via downloading from {absmapsdata} repo by @wfmackey
+
+Many of the functions and maps are Australian specific but you can perhaps find something similar in your own region?
+
+
+#rstats #rspatial #rladies
+
+</blockquote>
+
+
+```{r map-ced2021}
+library(ggplot2)
+library(strayr) # remotes::install_github("runapp-aus/strayr")
+ced2021 <- read_absmap("ced2021")
+
+ggplot(ced2021) + 
+  geom_sf()
+```
+
+<blockquote>
+
+If {strayr} interests you or more broadly, Australian Public Policy + #rstats interests you, there is a Slack group for that with lots of active and friendly folks! 
+
+🔗 https://runapp-aus.github.io/runapp_website/join.html
+
+</blockquote>
