@@ -1,0 +1,233 @@
+---
+output: github_document
+always_allow_html: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(cache = TRUE,
+                      cache.path = "cache/day4/",
+                      message = FALSE,
+                      warning = FALSE,
+                      fig.path = "figures/day4/")
+```
+
+# Learn with me about *time series modelling*
+
+<blockquote>
+Today, let's have a look at:
+
+Day 4️⃣ Time series modelling
+
+featuring the following packages:
+
+📦 gratis @YanfeiKang & co
+📦🇦🇺 tsibble @earowang & co
+📦🇦🇺 fable @mitchoharawild & co
+
+
+Admittedly, I know very little about time series so come learn along with me!
+
+#rstats #rladies 
+
+</blockquote>
+
+```{r anim-ts, fig.height = 7}
+library(tidyverse)
+library(lubridate)
+library(gganimate)
+library(tsibble)
+tsibbledata::aus_production %>% 
+  pivot_longer(-Quarter, 
+               names_to = "Commodity", 
+               values_to = "Production") %>% 
+  mutate(Date = as_date(Quarter)) %>% 
+  ggplot(aes(Quarter, Production, color = Commodity)) +
+  geom_line() + 
+  facet_grid(Commodity ~ ., scale = "free_y") + 
+  labs(title = "Quarterly production of selected commodities in Australia") +
+  theme(text = element_text(size = 14),
+        plot.title.position = "plot",
+        legend.position = "none") +
+  transition_reveal(Date)
+
+```
+
+<blockquote>
+Day 4️⃣ #1
+
+⏳ Once upon a time (& still now), time series data in #rstats are often stored as ts objects. In this format, time index is an _attribute_ rather than a variable
+
+⌛ {tsibble} by @earowang & co modernises to tidy data making it easier to work with #tidyverse
+
+#rladies 
+
+</blockquote>
+
+```{r}
+class(sunspots)
+sunspots
+
+tsibble::as_tsibble(sunspots)
+```
+
+
+
+<blockquote>
+Day 4️⃣ #2
+
+📦 {tsibble} uses {vctrs} to define a number of special vector classes
+
+This includes representing non-standard time index like:
+
+📅 year-week (with default day starting on Monday)
+🗓️ year-month 
+📆 year-quarter (year starting on Jan)
+
+#rstats #rladies 
+
+</blockquote>
+
+```{r}
+tsibble::yearweek(Sys.Date())
+tsibble::yearweek(c("2022 W16", "2022 Week 16"))
+tsibble::yearmonth(Sys.Date())
+tsibble::yearmonth(c("2022 Apr", "2022-04", "2022 April"))
+tsibble::yearquarter(Sys.Date())
+tsibble::yearquarter(c("2022 Q1", "2022 Qtr1", "2022 Quarter 1"))
+```
+
+
+<blockquote>
+Day 4️⃣ #3
+
+
+🕰️ The non-standard time index in {tsibble} like `yearmonth`, `yearweek` and `yearquarter` comes with a set of default `scale_*` functions that make prettier scales automatically for you in #ggplot !
+
+#rstats #rladies 
+
+</blockquote>
+
+```{r non-standard-index}
+library(tidyverse)
+library(tsibble)
+
+df <- tibble(index = seq(Sys.Date() - months(100), Sys.Date(), by = "4 month")) %>% 
+  mutate(value = rnorm(n()))
+
+#  year-month
+p <- df %>% 
+  mutate(index = yearmonth(index)) %>% 
+  ggplot(aes(index, value)) +
+  geom_line() + 
+  labs(title = "Year-Month", tag = "(A)") +
+  theme(text = element_text(size = 16))
+p
+
+#  year-week
+p %+% mutate(df, index = yearweek(index)) +
+  labs(title = "Year-Week", tag = "(B)")
+
+#  year-quarter
+p %+% mutate(df, index = yearquarter(index)) +
+  labs(title = "Year-Quarter", tag = "(C)")
+```
+
+
+
+<blockquote>
+Day 4️⃣ #4
+
+Next, I'm going to study some synthetic time series data using {gratis} by @YanfeiKang & co 🕰️
+
+Steps involve:
+
+1. Define a parametric model: e.g., arima_model()
+2A. Use generate() for tsibble output
+2B. Use simulate() for ts output
+3. Plot it!
+
+#rstats #rladies
+
+</blockquote>
+
+```{r arima-model}
+library(tidyverse)
+library(fable)
+library(gratis)
+library(feasts)
+set.seed(2022)
+sim1 <- arima_model(frequency = 7,
+                    p = 1, # non-seasonal AR order
+                    d = 0, # non-seasonal order of differencing
+                    q = 0, # non-seasonal MA order
+                    P = 1, # seasonal AR order
+                    D = 0, # seasonal order of differencing
+                    Q = 1, # seasonal MA order
+                    constant = 0, # intercept
+                    phi = c(0.8), # AR parameters
+                    theta = c(), # MA parameters
+                    Phi = c(-0.4), # seasonal AR parameters
+                    Theta = c(0.8), # seasonal MA parameters
+                    sigma = 0.5 # sd of noise
+                    ) %>% 
+  gratis:::generate.Arima(length = 1200, nseries = 3)
+
+autoplot(sim1) +
+  facet_grid(key ~ .)
+```
+
+<blockquote>
+Day 4️⃣ #5
+
+📦 {fable} by @mitchoharawild & co is well known for tidy forecasting but this time I'm putting it to test it's ability for modelling rather than forecasting!
+
+🎯 I'm going to fit an ARIMA model via {fable}:
+
+1. with automatic parameter selection 
+2. fitting the actual order from generating process
+
+#rstats #rladies
+
+</blockquote>
+
+```{r fit-arima}
+library(fable)
+# true model is ARIMA(1,0,0)(1,0,1)
+fit_auto <- model(sim1, ARIMA(value)) 
+purrr::walk(fit_auto[[2]], report)
+
+# true parameters are ar1 = 0.8, sar1 = -0.4, sma1 = 0.8
+fit <- model(sim1, ARIMA(value ~ pdq(1, 0, 0) + PDQ(1, 0, 1))) 
+purrr::walk(fit[[2]], report)
+```
+
+
+```{r fit-stl}
+model(sim1, STL(value)) %>% 
+  components() %>% 
+  autoplot()
+```
+
+
+```{r mar-model}
+sim2 <- mar_model(k = 1, # number of components
+                  p = 1, # non-seasonal AR order
+                  d = 0, # non-seasonal order of differencing
+                  P = 1, # seasonal AR order
+                  D = 0, # seasonal order of differencing
+                  phi = cbind(0.8), # non-seasonal AR parameters,
+                  Phi = cbind(0.5), # seasonal AR parameters 
+                  constants = 0, # intercepts
+                  sigmas = 0.5, # sd noise vector
+                  weights = 1, # mixing weights
+                  seasonal_periods = 7) %>% 
+  generate(length = 1200, nseries = 1)
+
+autoplot(sim2)
+
+model(sim2, ARIMA(value)) %>% 
+  report()
+
+
+```
+
